@@ -52,15 +52,42 @@ def read_sensitivity_db():
 
 
 device = int(sys.argv[1]) if len(sys.argv) > 1 else None
-rate = int(sd.query_devices(device, "input")["default_samplerate"])
+dev_info = sd.query_devices(device)
+rate = int(dev_info["default_samplerate"])
+out_channels = min(2, dev_info["max_output_channels"])
+
+# --- Voice effect (robot voice) ---
+EFFECT_ON = True
+OUTPUT_GAIN = 1.0       # speaker volume; keep low at first to avoid feedback
+RING_FREQ_HZ = 50.0     # lower = gruffer/buzzier, higher = more metallic
+RING_MIX = 0.7          # 0 = dry voice, 1 = fully ring-modulated
+CRUSH_LEVELS = 24       # fewer = grittier (quantization steps per side)
+BLOCK = 512             # samples per audio block; small = low latency (~11 ms)
 
 raw_db = -100.0  # latest measured level, written by the audio thread
+phase = 0.0      # ring modulator oscillator phase, carried across blocks
 
 
-def audio_callback(indata, frames, time_info, status):
+def robotize(x):
+    """x: float32 mono block in -1..1. Ring-mod + bit-crush + soft clip."""
+    global phase
+    n = len(x)
+    t = phase + 2 * np.pi * RING_FREQ_HZ / rate * np.arange(n)
+    phase = (phase + 2 * np.pi * RING_FREQ_HZ / rate * n) % (2 * np.pi)
+    ring = x * np.sin(t)
+    y = (1 - RING_MIX) * x + RING_MIX * ring
+    y = np.round(y * CRUSH_LEVELS) / CRUSH_LEVELS
+    return np.tanh(2.0 * y)
+
+
+def audio_callback(indata, outdata, frames, time_info, status):
     global raw_db
-    rms = np.sqrt(np.mean(indata[:, 0] ** 2))
+    mono = indata[:, 0]
+    # level for the bar comes from the dry mic signal, not the effect
+    rms = np.sqrt(np.mean(mono ** 2))
     raw_db = 20 * np.log10(max(rms, 1e-6))
+    out = robotize(mono) if EFFECT_ON else mono
+    outdata[:] = (out * OUTPUT_GAIN)[:, None]  # same signal to every output channel
 
 
 geometry = piomatter.Geometry(width=WIDTH, height=HEIGHT, n_addr_lines=3,
@@ -92,8 +119,8 @@ def draw_bars(smoothed):
 
 
 smoothed = 0.0
-with sd.InputStream(device=device, channels=1, samplerate=rate,
-                    blocksize=rate // FPS, callback=audio_callback):
+with sd.Stream(device=device, channels=(1, out_channels), samplerate=rate,
+               blocksize=BLOCK, latency="low", callback=audio_callback):
     print("Running. Ctrl-C to quit.")
     try:
         while True:
