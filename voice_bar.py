@@ -51,10 +51,13 @@ def read_sensitivity_db():
     return SENSITIVITY_DB
 
 
-device = int(sys.argv[1]) if len(sys.argv) > 1 else None
-dev_info = sd.query_devices(device)
-rate = int(dev_info["default_samplerate"])
-out_channels = min(2, dev_info["max_output_channels"])
+if len(sys.argv) > 1:
+    in_dev = out_dev = int(sys.argv[1])
+else:
+    in_dev, out_dev = sd.default.device  # system defaults; may be -1 if unset
+device = (in_dev, out_dev)
+rate = int(sd.query_devices(in_dev, "input")["default_samplerate"])
+out_channels = min(2, sd.query_devices(out_dev, "output")["max_output_channels"])
 
 # --- Voice effect (robot voice) ---
 EFFECT_ON = True
