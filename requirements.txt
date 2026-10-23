@@ -1,0 +1,4 @@
+numpy
+pillow
+sounddevice
+adafruit-blinka-raspberry-pi5-piomatter
