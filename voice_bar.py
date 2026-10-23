@@ -38,8 +38,8 @@ assert len(SEG_COLORS) == N_SEG, f"need {N_SEG} colors"
 IDLE_COLOR = (0, 25, 0)  # dim center segment so it's clear the thing is on
 
 # --- Audio tuning: set these from what mic_test.py showed you ---
-NOISE_FLOOR_DB = -55.0  # at/below this, nothing lit
-CEILING_DB = -20.0      # at/above this, all segments lit
+NOISE_FLOOR_DB = -40.0  # at/below this, nothing lit
+CEILING_DB = -10.0      # at/above this, all segments lit
 SENSITIVITY_DB = 0.0    # added to the measured level; the pot will drive this
 ATTACK = 0.7            # 0..1, higher = rises faster
 RELEASE = 0.15          # 0..1, higher = falls faster
