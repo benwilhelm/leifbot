@@ -67,8 +67,53 @@ RING_MIX = 0.7          # 0 = dry voice, 1 = fully ring-modulated
 CRUSH_LEVELS = 24       # fewer = grittier (quantization steps per side)
 BLOCK = 512             # samples per audio block; small = low latency (~11 ms)
 
+# --- Noise rejection ---
+HP_CUTOFF_HZ = 150.0    # cuts rumble/wind/handling noise below this; 0 disables
+GATE_HYSTERESIS_DB = 5.0  # gate closes this far below NOISE_FLOOR_DB (stops chatter)
+GATE_HOLD_MS = 250      # stay open this long after the voice drops (no clipped words)
+GATE_RAMP_MS = 10       # fade in/out time (avoids clicks)
+
 raw_db = -100.0  # latest measured level, written by the audio thread
 phase = 0.0      # ring modulator oscillator phase, carried across blocks
+hp_alpha = np.exp(-2 * np.pi * HP_CUTOFF_HZ / rate)
+hp_x1 = hp_y1 = 0.0   # high-pass filter state
+gate_open = False
+gate_gain = 0.0
+hold_left = 0         # samples of hold remaining
+
+
+def highpass(x):
+    """One-pole high-pass, state carried across blocks."""
+    global hp_x1, hp_y1
+    y = np.empty_like(x)
+    x1, y1, a = hp_x1, hp_y1, hp_alpha
+    for i, xi in enumerate(x):
+        y1 = a * (y1 + xi - x1)
+        x1 = xi
+        y[i] = y1
+    hp_x1, hp_y1 = x1, y1
+    return y
+
+
+def apply_gate(x, db):
+    """Mute x unless db is above the noise floor (with hysteresis + hold)."""
+    global gate_open, gate_gain, hold_left
+    open_db = NOISE_FLOOR_DB
+    close_db = NOISE_FLOOR_DB - GATE_HYSTERESIS_DB
+    if db >= open_db:
+        gate_open = True
+        hold_left = int(GATE_HOLD_MS / 1000 * rate)
+    elif gate_open and db < close_db:
+        hold_left -= len(x)
+        if hold_left <= 0:
+            gate_open = False
+    target = 1.0 if gate_open else 0.0
+    # linear ramp toward target, at most GATE_RAMP_MS worth per block
+    step = len(x) / max(1, GATE_RAMP_MS / 1000 * rate)
+    end = gate_gain + np.clip(target - gate_gain, -step, step)
+    ramp = np.linspace(gate_gain, end, len(x), dtype=np.float32)
+    gate_gain = float(end)
+    return x * ramp
 
 
 def robotize(x):
@@ -85,10 +130,11 @@ def robotize(x):
 
 def audio_callback(indata, outdata, frames, time_info, status):
     global raw_db
-    mono = indata[:, 0]
-    # level for the bar comes from the dry mic signal, not the effect
+    mono = highpass(indata[:, 0]) if HP_CUTOFF_HZ > 0 else indata[:, 0]
+    # level for the bar comes from the filtered dry mic signal, not the effect
     rms = np.sqrt(np.mean(mono ** 2))
     raw_db = 20 * np.log10(max(rms, 1e-6))
+    mono = apply_gate(mono, raw_db + read_sensitivity_db())
     out = robotize(mono) if EFFECT_ON else mono
     outdata[:] = (out * OUTPUT_GAIN)[:, None]  # same signal to every output channel
 
