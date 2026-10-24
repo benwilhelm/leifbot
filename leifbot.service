@@ -1,0 +1,20 @@
+# sudo cp ~/leifbot/leifbot.service /etc/systemd/system/
+# sudo systemctl daemon-reload
+# sudo systemctl start leifbot     # try it now, before enabling at boot
+# journalctl -u leifbot -f         # watch the logs; Ctrl-C to stop watching
+# sudo systemctl enable leifbot    # then start it on every boot
+
+[Unit]
+Description=Leifbot voice bar
+After=sound.target
+
+[Service]
+Type=simple
+User=leifbot
+WorkingDirectory=/home/leifbot/leifbot
+ExecStart=/home/leifbot/leifbot/venv/bin/python /home/leifbot/leifbot/voice_bar.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
