@@ -61,7 +61,8 @@ out_channels = min(2, sd.query_devices(out_dev, "output")["max_output_channels"]
 
 # --- Voice effect (robot voice) ---
 EFFECT_ON = True
-OUTPUT_GAIN = 1.0       # speaker volume; keep low at first to avoid feedback
+INPUT_GAIN = 3.0        # boosts the voice before the effect; more = louder + grittier
+OUTPUT_GAIN = 1.5       # final speaker volume; clipped at full scale. Watch for feedback
 RING_FREQ_HZ = 50.0     # lower = gruffer/buzzier, higher = more metallic
 RING_MIX = 0.7          # 0 = dry voice, 1 = fully ring-modulated
 CRUSH_LEVELS = 24       # fewer = grittier (quantization steps per side)
@@ -135,8 +136,10 @@ def audio_callback(indata, outdata, frames, time_info, status):
     rms = np.sqrt(np.mean(mono ** 2))
     raw_db = 20 * np.log10(max(rms, 1e-6))
     mono = apply_gate(mono, raw_db + read_sensitivity_db())
+    mono = mono * INPUT_GAIN  # after level measurement, so the bar/gate don't change
     out = robotize(mono) if EFFECT_ON else mono
-    outdata[:] = (out * OUTPUT_GAIN)[:, None]  # same signal to every output channel
+    out = np.clip(out * OUTPUT_GAIN, -1.0, 1.0)  # hard limit so it can't wrap/glitch
+    outdata[:] = out[:, None]  # same signal to every output channel
 
 
 geometry = piomatter.Geometry(width=WIDTH, height=HEIGHT, n_addr_lines=3,
