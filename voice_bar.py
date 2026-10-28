@@ -19,7 +19,7 @@ import adafruit_blinka_raspberry_pi5_piomatter as piomatter
 # --- Display (same geometry as single_panel_simpletest.py) ---
 WIDTH = 32
 HEIGHT = 16
-BAR_HEIGHT = 8          # rows tall, centered vertically
+BAR_HEIGHT = 12         # rows tall, centered vertically; more lit pixels = brighter look
 SEG_W = 2               # pixels per segment
 SEG_GAP = 1             # dark pixels between segments
 HALF = WIDTH // 2
@@ -28,14 +28,14 @@ N_SEG = (HALF + SEG_GAP) // (SEG_W + SEG_GAP)  # segments per side
 # Color of each segment, center -> edge. Louder speech lights more of them,
 # so the bar goes green -> yellow -> red as volume rises.
 SEG_COLORS = [
-    (0, 200, 0),
-    (0, 200, 0),
-    (200, 200, 0),
-    (255, 90, 0),
+    (0, 255, 0),
+    (0, 255, 0),
+    (255, 255, 0),
+    (255, 110, 0),
     (255, 0, 0),
 ]
 assert len(SEG_COLORS) == N_SEG, f"need {N_SEG} colors"
-IDLE_COLOR = (0, 25, 0)  # dim center segment so it's clear the thing is on
+IDLE_COLOR = (0, 60, 0)  # dim center segment so it's clear the thing is on
 
 # --- Audio tuning: set these from what mic_test.py showed you ---
 NOISE_FLOOR_DB = -35.0  # at/below this, nothing lit
