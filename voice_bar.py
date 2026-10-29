@@ -109,6 +109,8 @@ RING_FREQ_HZ = 150.0    # the buzz speed: lower = gruff and growly, higher = met
 RING_MIX = 1            # 0 = normal voice, 1 = all robot buzz
 CRUSH_LEVELS = 24       # fewer = more crunchy and "video game" sounding
 BLOCK = 512             # we handle sound in chunks this big (small chunk = less delay)
+PITCH_SEMITONES = -5.0  # change the voice's pitch: negative = deeper, 0 = off. -12 = one octave down
+PITCH_WINDOW_MS = 40    # shifter memory size: smaller = less delay but more warble
 
 # ---------------------------------------------------------------------------
 # Settings for ignoring background noise
@@ -129,6 +131,10 @@ hp_x1 = hp_y1 = 0.0     # the rumble filter's memory of the last sound it saw
 gate_open = False       # is the noise gate open (sound allowed through)?
 gate_gain = 0.0         # how open the gate is right now: 0 = closed, 1 = fully open
 hold_left = 0           # how much "keep the gate open" time is left
+PS_WIN = int(rate * PITCH_WINDOW_MS / 1000)   # pitch shifter memory size, in samples
+PS_HIST = PS_WIN + 2                          # how much past sound we keep
+ps_hist = np.zeros(PS_HIST, dtype=np.float32)  # the pitch shifter's memory of recent sound
+ps_phase = 0.0                                 # how far the shifter's "readers" have drifted
 
 
 def highpass(x):
@@ -175,6 +181,37 @@ def apply_gate(x, db):
     return x * ramp                                  # turn the volume up or down
 
 
+def pitch_shift(x):
+    """Make the voice deeper (or higher) without changing how fast it talks.
+
+    Idea: keep a short memory of recent sound, and play it back at a different
+    speed, like a tape player running slow. Playing back slower makes a lower
+    pitch, but the player would slowly fall behind (or run ahead of) the live
+    sound. To fix that, there are TWO readers, half a window apart. Each reader
+    fades out just as it jumps back to catch up, while the other fades in, so
+    you never hear the jump.
+    """
+    global ps_hist, ps_phase
+    n = len(x)
+    speed = 2 ** (PITCH_SEMITONES / 12)        # 12 semitones = double the speed/pitch
+    sound = np.concatenate([ps_hist, x])        # recent past + the new chunk
+    j = np.arange(n)
+    out = np.zeros(n, dtype=np.float32)
+    for offset in (0, PS_WIN / 2):              # the two readers
+        # How far behind the live sound this reader is. It drifts, then wraps around.
+        delay = (ps_phase + offset + j * (1 - speed)) % PS_WIN
+        pos = PS_HIST + j - delay - 1           # where in the memory to read from
+        i0 = np.floor(pos).astype(int)
+        frac = pos - i0
+        # Read between two neighbouring samples for smoother sound.
+        s = sound[i0] * (1 - frac) + sound[i0 + 1] * frac
+        # Fade the reader out as it nears the point where it jumps back.
+        out += s * np.sin(np.pi * delay / PS_WIN) ** 2
+    ps_phase = (ps_phase + n * (1 - speed)) % PS_WIN
+    ps_hist = sound[-PS_HIST:]                  # remember the latest sound for next time
+    return out
+
+
 def robotize(x):
     """Make a voice sound like a robot.
 
@@ -211,6 +248,8 @@ def audio_callback(indata, outdata, frames, time_info, status):
     rms = np.sqrt(np.mean(mono ** 2))
     raw_db = 20 * np.log10(max(rms, 1e-6))   # turn it into dB (max() avoids log of zero)
     mono = apply_gate(mono, raw_db + read_sensitivity_db())  # mute it if it's just background noise
+    if PITCH_SEMITONES != 0:
+        mono = pitch_shift(mono)                              # make the voice deeper
     out = robotize(mono) if EFFECT_ON else mono               # make it sound like a robot
     outdata[:] = (out * OUTPUT_GAIN)[:, None]  # send to the speaker (same sound on every channel)
 
