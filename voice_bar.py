@@ -62,8 +62,8 @@ out_channels = min(2, sd.query_devices(out_dev, "output")["max_output_channels"]
 # --- Voice effect (robot voice) ---
 EFFECT_ON = True
 OUTPUT_GAIN = 1.0       # speaker volume; keep low at first to avoid feedback
-RING_FREQ_HZ = 50.0     # lower = gruffer/buzzier, higher = more metallic
-RING_MIX = 0.7          # 0 = dry voice, 1 = fully ring-modulated
+RING_FREQ_HZ = 150.0     # lower = gruffer/buzzier, higher = more metallic
+RING_MIX = 1          # 0 = dry voice, 1 = fully ring-modulated
 CRUSH_LEVELS = 24       # fewer = grittier (quantization steps per side)
 BLOCK = 512             # samples per audio block; small = low latency (~11 ms)
 
